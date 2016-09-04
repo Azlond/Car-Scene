@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+	<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+	<style>
+		* {
+			margin: 0;
+			padding: 0;
+			overflow: hidden;
+		}
+	</style>
+	<title>CG Car</title>
+</head>
+
+<body>
+	<script src="javascript/three.min.js"></script>
+	<script src="javascript/OrbitControls.js"></script>
+	<script src="javascript/dat.gui.min.js"></script>
+	<script>
+		/*sources:*/ /*grass: http://www.tutorialsforblender3d.com/Textures/Grass/Grass_1.html*/
+		/*metal: http://agf81.deviantart.com/art/Seamless-Floor-Special-322523166*/
+		/*tire: www.photos-public-domain.com/2013/11/13/bumpy-black-plastic-texture/*/
+		/*carbody: http://www.texturemate.com/content/free-texture-sorensen-leather-25-02-2014-00277-sorensen-leather-yellowstone-barnwood-2090111*/
+
+		var camera, scene, renderer, controls, guiControls; // essentials
+		var car; //complete car
+		var bodyTransportFlap; //the flap to open the transport area, needed global for change access
+		var driversDoorHinge, nonDriversDoorHinge, flapHinge; // hinge to rotate on
+		var driversDoor, nonDriversDoor; // doors that can be opened
+		var sphere, driversLight; //sphere = lightbulb, light inside, needed to turn on/off
+		var angle = Math.PI / 2; // angle where to drive
+		var frontAxle, backAxle; //axles where whees are. needed to spin
+
+		/*
+        function to initialize the scene
+        */
+		function init() {
+
+			/*DAT.GUI*/
+			guiControls = new guiControls();
+
+			var gui = new DAT.GUI();
+			gui.add(guiControls, 'Doors', 0, 90);
+			gui.add(guiControls, 'Flap', 0, 90);
+			gui.add(guiControls, 'Lights');
+			gui.add(guiControls, 'Driving');
+
+
+			/*Essentials*/
+			scene = new THREE.Scene();
+
+			camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 1000);
+			camera.position.set(42, 20, 0); //set camera behind cae
+
+			renderer = new THREE.WebGLRenderer({
+				antialias: true
+			});
+			renderer.shadowMapEnabled = true;
+			renderer.shadowMapSoft = true;
+			renderer.setSize(window.innerWidth, window.innerHeight);
+			document.body.appendChild(renderer.domElement);
+
+			/*the outermost object*/
+			car = new THREE.Object3D();
+
+			//create axles
+
+			frontAxle = buildAxis();
+			backAxle = buildAxis();
+			frontAxle.rotation.x = -Math.PI / 2;
+			backAxle.rotation.x = -Math.PI / 2
+			frontAxle.position.set(0, 0.1, 0);
+			backAxle.position.set(20, 0.1, 0)
+
+			/*create wheels, add to axis*/
+			var fwheel1 = buildWheel(5);
+			var fwheel2 = buildWheel(-5);
+			frontAxle.add(fwheel1, fwheel2);
+
+			var bwheel1 = buildWheel(5);
+			var bwheel2 = buildWheel(-5);
+			backAxle.add(bwheel1, bwheel2);
+
+			/*add axles to car*/
+			car.add(backAxle, frontAxle);
+
+
+
+			/*create body of car*/
+			var body = new THREE.Object3D();
+
+			/*create front of the car, add to body*/
+			var bodyFront = buildBody(6, 3, 9);
+			bodyFront.position.set(2, 2, 0);
+			body.add(bodyFront);
+
+			/*variables for drivers area, back area*/
+			var driversCab = new THREE.Object3D();
+			var bodyBack = new THREE.Object3D();
+
+			/*start working on back area*/
+			var bodyTransportBottom = buildBody(10, 0.5, 9); //transport area bottom
+			bodyTransportBottom.position.set(16, 0.75, 0)
+			var bodyTransportDriver = buildBody(0.5, 2, 9); //transport area side behind the driver
+			bodyTransportDriver.position.set(11, 2, 0);
+			var bodyTransportLeft = buildBody(10, 2, 0.5); //transport area driver side
+			bodyTransportLeft.position.set(16, 2, -4.25);
+			var bodyTransportRight = buildBody(10, 2, 0.5); //transport area non driver side
+			bodyTransportRight.position.set(16, 2, 4.25);
+			bodyTransportFlap = buildBody(0.5, 2, 9); //Flap that can be opened
+			bodyTransportFlap.position.set(0.1, 0.5, 0);
+			flapHinge = buildBody(0.1, 0.75, 9); //hinge to rotate the flap on
+			flapHinge.position.set(21, 1.5, 0);
+
+			flapHinge.add(bodyTransportFlap);
+
+			/*add to back body*/
+			bodyBack.add(bodyTransportBottom, bodyTransportDriver, bodyTransportLeft, bodyTransportRight, flapHinge);
+
+			/*add back to body*/
+			body.add(bodyBack);
+
+
+			/*start working on drivers area*/
+
+			/*door on the drivers side*/
+			driversDoor = new THREE.Object3D();
+			driversDoorHinge = buildBody(0.1, 5.3, 0.1); //hinge to rotate door
+			driversDoorHinge.position.set(4.9, 3.65, 4.3);
+			var driversDoorBottom = buildBody(5.9, 2, 0.2); //bottom piece
+			driversDoorBottom.position.set(0, 0, 0);
+			var driversDoorWindow = createWindow(5.9, 2.5, 0.2) //the window
+			driversDoorWindow.position.set(0, 2.25, 0);
+			var driversDoorTop = buildBody(5.9, 0.8, 0.2); //the top piece
+			driversDoorTop.position.set(0, 3.9, 0);
+
+			/*add to driversDoor*/
+			driversDoor.add(driversDoorBottom, driversDoorWindow, driversDoorTop);
+
+			driversDoor.position.set(5.9 / 2, -1.65, 0);
+
+			driversDoorHinge.add(driversDoor);
+
+			driversCab.add(driversDoorHinge);
+
+			/*door on the other side*/
+			nonDriversDoor = new THREE.Object3D();
+			nonDriversDoorHinge = buildBody(0.1, 5.3, 0.1); //hinge to rotate door
+			nonDriversDoorHinge.position.set(4.9, 3.65, -4.3);
+			var nonDriversDoorBottom = buildBody(5.9, 2, 0.2); //bottom piece
+			nonDriversDoorBottom.position.set(0, 0, 0);
+			var nonDriversDoorWindow = createWindow(5.9, 2.5, 0.2) //the window
+			nonDriversDoorWindow.position.set(0, 2.25, 0);
+			var nonDriversDoorTop = buildBody(5.9, 0.8, 0.2); //top piece
+			nonDriversDoorTop.position.set(0, 3.9, 0);
+
+			/*add to nonDriversDoor*/
+			nonDriversDoor.add(nonDriversDoorBottom, nonDriversDoorWindow, nonDriversDoorTop);
+
+			/*move nonDriversDoor*/
+			nonDriversDoor.position.set(5.9 / 2, -1.65, 0);
+			/*add door to hinge*/
+			nonDriversDoorHinge.add(nonDriversDoor);
+
+			driversCab.add(nonDriversDoorHinge);
+
+
+
+			/*Windows*/
+			var windows = new THREE.Object3D();
+			var frontWindow = createWindow(0.1, 3, 8.4); //front window
+			frontWindow.position.set(4.95, 5, 0);
+			var backWindow = createWindow(0.1, 3.7, 8.4); //back window
+			backWindow.position.set(10.95, 4.5, 0);
+			/*add windows to windows*/
+			windows.add(frontWindow, backWindow);
+			/*add windows to cab*/
+			driversCab.add(windows);
+
+			/*the skeleton of the cab area*/
+			var frontrightCab = buildBody(0.3, 4, 0.3);
+			frontrightCab.position.set(4.85, 4.5, 4.35);
+			var frontleftCab = buildBody(0.3, 4, 0.3);
+			frontleftCab.position.set(4.85, 4.5, -4.35);
+			var backrightCab = buildBody(0.3, 3.8, 0.3);
+			backrightCab.position.set(10.85, 4.5, 4.35);
+			var backleftCab = buildBody(0.3, 3.8, 0.3);
+			backleftCab.position.set(10.85, 4.5, -4.35);
+			var topCab = buildBody(7, 0.3, 9.05);
+			topCab.position.set(7.5, 6.45, 0);
+			var bottomCab = buildBody(6, 0.5, 9);
+			bottomCab.position.set(8, 0.75, 0);
+			/*add to cab*/
+			driversCab.add(frontrightCab, frontleftCab, backrightCab, backleftCab, topCab, bottomCab);
+
+			/*object + light in the cab*/
+			var lightBulb = new THREE.Object3D();
+			/*light in the cab*/
+			driversLight = new THREE.PointLight(0xffff00, 0, 8); //intensity = 0, light is turned off at the start
+			/*object where the light comes from*/
+			var geometry = new THREE.SphereGeometry(0.3, 32, 32);
+			var bulbTexture = THREE.ImageUtils.loadTexture('images/glass.jpg', {}, function() {
+				renderer.render(scene, camera)
+			});
+			var bulbMat = new THREE.MeshPhongMaterial({
+				color: 0xffffff,
+				map: bulbTexture,
+				transparent: true,
+				opacity: 0.5,
+			});
+			/*create the object*/
+			sphere = new THREE.Mesh(geometry, bulbMat);
+			/*add light to object*/
+			sphere.add(driversLight);
+			/*move object to position*/
+			sphere.position.set(6, 6.3, 0);
+			/*add both to lightbulb*/
+			lightBulb.add(sphere);
+			/*add to cab*/
+			driversCab.add(lightBulb);
+
+			/*add cab to body*/
+			body.add(driversCab);
+			/*add body to car*/
+			car.add(body);
+			/*add car to scene*/
+			scene.add(car);
+
+			createSky(); //create a sky
+			createGround(); //create the ground
+			createLight(); //create spotLight, ambientLight
+
+			/*OrbitControls, to control the camera*/
+			controls = new THREE.OrbitControls(camera, renderer.domElement);
+			controls.addEventListener('change', render);
+
+			controls.center = new THREE.Vector3(0, 0, 0);
+			controls.target = controls.center;
+			controls.object.lookAt(controls.target);
+			controls.maxPolarAngle = Math.PI / 2; //can't move through ground
+
+			document.addEventListener('keydown', onKeyDown, false); //keyListener, for movement
+
+			car.add(camera); //make camera focus car
+
+		}
+
+		/*
+		takes parametrs x,y,z for geometry box
+		xpos to move to x position
+		ypos to move to y position
+		zpos to move to z position
+		can receive and cast shadows
+		*/
+		function createWindow(x, y, z) {
+
+			var result = new THREE.Object3D();
+
+			var glassTexture = THREE.ImageUtils.loadTexture('images/glass.jpg', {}, function() {
+				renderer.render(scene, camera)
+			});
+			var glassMat = new THREE.MeshPhongMaterial({
+				color: 0xffffff,
+				map: glassTexture,
+				transparent: true,
+				opacity: 0.5,
+				specular: 0xffffff,
+				shininess: 0.1,
+				ambient: 0xffffff
+			});
+			var windowGeo = new THREE.BoxGeometry(x, y, z);
+			var windowMesh = new THREE.Mesh(windowGeo, glassMat);
+			windowMesh.receiveShadow = true;
+			windowMesh.castShadow = true;
+
+			result.add(windowMesh);
+
+			return result;
+
+		}
+
+		/*
+		takes parametrs x,y,z for geometry box
+		xpos to move to x position
+		ypos to move to y position
+		zpos to move to z position
+		can receive and cast shadows        
+		*/
+		function buildBody(x, y, z) {
+
+			var result = new THREE.Object3D();
+
+			var bodyTexture = THREE.ImageUtils.loadTexture('images/carbody.jpg', {}, function() {
+				renderer.render(scene, camera)
+			});
+			var bodyMat = new THREE.MeshBasicMaterial({
+				color: 0xffffff,
+				map: bodyTexture
+			});
+			var bodyGeo = new THREE.BoxGeometry(x, y, z);
+			var bodyMesh = new THREE.Mesh(bodyGeo, bodyMat);
+			bodyMesh.castShadow = true;
+			bodyMesh.receiveShadow = true;
+
+			result.add(bodyMesh);
+
+			return result;
+
+		}
+
+		/*
+		creates the wheels
+		ypos to move to y position
+		can receive and cast shadows 
+		*/
+		function buildWheel(ypos) {
+			var result = new THREE.Object3D();
+
+			var wheelGeometry = new THREE.CylinderGeometry(2, 2, 0.4, 20, 0)
+			var wheelTexture = THREE.ImageUtils.loadTexture('images/tire.jpg', {}, function() {
+				renderer.render(scene, camera)
+			});
+			var wheelMaterial = new THREE.MeshBasicMaterial({
+				color: 0xffffff,
+				map: wheelTexture
+			});
+
+			var wheelMesh = new THREE.Mesh(wheelGeometry, wheelMaterial);
+			wheelMesh.castShadow = true;
+			wheelMesh.receiveShadow = true;
+			wheelMesh.position.y += ypos;
+			result.add(wheelMesh);
+
+			return result;
+		}
+
+		/*
+		    creates the axles for the wheels
+		    can receive and cast shadows 
+		*/
+		function buildAxis() {
+			var result = new THREE.Object3D();
+
+			var axisTexture = THREE.ImageUtils.loadTexture('images/metal.jpg', {}, function() {
+				renderer.render(scene, camera)
+			});
+			var mat = new THREE.MeshBasicMaterial({
+				color: 0xffffff,
+				map: axisTexture
+			});
+			var axisGeo = new THREE.CylinderGeometry(0.3, 0.3, 10, 16, 10);
+
+			var axisMesh = new THREE.Mesh(axisGeo, mat);
+			axisMesh.castShadow = true;
+			axisMesh.receiveShadow = true;
+			result.add(axisMesh);
+
+			return result;
+		}
+
+		/*
+		function to create the sky box
+		*/
+		function createSky() {
+			var skyTexture = THREE.ImageUtils.loadTexture(
+				'images/sky.png', {},
+				function() {
+					renderer.render(scene, camera)
+				});
+
+			var skyGeometry = new THREE.BoxGeometry(500, 500, 500);
+			var skyMaterial = new THREE.MeshLambertMaterial({
+				color: 0xffffff,
+				map: skyTexture
+			})
+			skyBox = new THREE.Mesh(skyGeometry, skyMaterial);
+			skyBox.material.side = THREE.BackSide;
+			scene.add(skyBox);
+		}
+
+		/*
+		function to create the ground
+		*/
+		function createGround() {
+			var grassTexture = THREE.ImageUtils.loadTexture('images/grass.png');
+			grassTexture.wrapS = grassTexture.wrapT = THREE.RepeatWrapping;
+			grassTexture.repeat.x = grassTexture.repeat.y = 256;
+			var groundMat = new THREE.MeshPhongMaterial({
+				ambient: 0xffffff,
+				color: 0xffffff,
+				shininess: 0,
+				shading: THREE.SmoothShading,
+				map: grassTexture
+			});
+			var groundGeo = new THREE.PlaneBufferGeometry(600, 600);
+			var plane = new THREE.Mesh(groundGeo, groundMat);
+			plane.position.y = -1.9;
+			plane.rotation.x = -Math.PI / 2;
+			plane.receiveShadow = true;
+			plane.castShadow = false;
+			scene.add(plane);
+		}
+
+		/*
+		function to create all light sources
+		*/
+		function createLight() {
+			var ambLight = new THREE.AmbientLight(0xffffff);
+			scene.add(ambLight)
+
+			var spotLight = new THREE.SpotLight(0xffffff, 1)
+			spotLight.position.set(70, 70, 0);
+			spotLight.target = car;
+			spotLight.shadowDarkness = 0.7
+			spotLight.exponent = 1;
+			spotLight.angle = 10 * Math.PI / 180
+			spotLight.castShadow = true;
+			scene.add(spotLight);
+		}
+
+
+		function render() {
+			renderer.render(scene, camera);
+		}
+
+		/*updating the scene*/
+		function update() {
+			/*opens the doors*/
+			nonDriversDoorHinge.rotation.y = guiControls.Doors * Math.PI / 180;
+			driversDoorHinge.rotation.y = -guiControls.Doors * Math.PI / 180;
+
+			/*opens the flap in the back*/
+			flapHinge.rotation.z = -guiControls.Flap * Math.PI / 180;
+
+			/*turn on/off the light in the car*/
+			if (guiControls.Lights == true) {
+				sphere.material.color.setHex(0xffff00);
+				sphere.material.opacity = 1;
+				driversLight.intensity = 100;
+
+			} else {
+				sphere.material.color.setHex(0xffffff);
+				sphere.material.opacity = 0.5;
+				driversLight.intensity = 0;
+			}
+
+			controls.update();
+			renderer.render(scene, camera);
+			requestAnimationFrame(update);
+		}
+
+		/*default gui values*/
+		function guiControls() {
+			this.Doors = 0;
+			this.Flap = 0;
+			this.Lights = false;
+			this.Driving = false;
+		}
+
+		/*WASD to drive
+		 *checks which key is pressed, moves the car    
+		 */
+		var onKeyDown = function(event) {
+			if (event.keyCode == 87) { // when 'w' is pressed
+				frontAxle.rotation.y -= 360 / 20 * Math.PI / 180;
+				backAxle.rotation.y -= 360 / 20 * Math.PI / 180;
+				if (guiControls.Driving) {
+					car.position.x += Math.sin(-angle);
+					car.position.z += Math.cos(-angle);
+				}
+			} else if (event.keyCode == 83) { // s
+				frontAxle.rotation.y += 360 / 20 * Math.PI / 180;
+				backAxle.rotation.y += 360 / 20 * Math.PI / 180;
+				if (guiControls.Driving) {
+					car.position.x -= Math.sin(-angle);
+					car.position.z -= Math.cos(-angle);
+				}
+			} else if (event.keyCode == 65 && guiControls.Driving) { // a
+				car.rotation.y += 0.05;
+				angle -= 0.05;
+			} else if (event.keyCode == 68 && guiControls.Driving) { //d
+				car.rotation.y -= 0.05;
+				angle += 0.05;
+			}
+		};
+
+		init();
+		update();
+
+	</script>
+</body>
+
+</html>
